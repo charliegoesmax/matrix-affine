@@ -1,19 +1,20 @@
 # Super Collab
 
-A self-hosted Discord-style collaboration hub:
+Lightweight self-hosted collaboration hub:
 
 - **Chat / Spaces / Rooms / Threads** → Continuwuity + Element
-- **Rich posts / canvas / wiki** → AFFiNE
-- **Optional powerful search** → Meilisearch
+- **Structured wiki (shelves → books → chapters → pages)** → BookStack
+- **Infinite canvas (notes, arrows, connections, photos, documents on a board)** → AFFiNE
 
-Designed for local-first testing so it works on the first try.
+AFFiNE is the heavier optional piece. You can still use the rest of the stack if you stop it.
 
 ## Quick Start (Local Testing)
 
 ### 1. Prerequisites
 
 - Docker + Docker Compose v2
-- Ports free: `6167`, `8080`, `3010` (and `7700` if using search)
+- Ports free: `6167`, `8080`, `6875`, `3010`
+- Recommended free RAM: 4 GB+ if you plan to keep AFFiNE running
 
 ### 2. Configure
 
@@ -23,9 +24,13 @@ cp .env.example .env
 
 Edit `.env`:
 
-- Set a strong `CONTINUWUITY_REGISTRATION_TOKEN` (required to create accounts)
-- Set a strong `POSTGRES_PASSWORD`
-- Leave `CONTINUWUITY_SERVER_NAME=localhost` for local testing
+1. Set a strong `CONTINUWUITY_REGISTRATION_TOKEN`.
+2. Generate a BookStack `APP_KEY`:
+   ```bash
+   docker run -it --rm --entrypoint /bin/bash lscr.io/linuxserver/bookstack:latest appkey
+   ```
+   Paste the output into `BOOKSTACK_APP_KEY`.
+3. Set strong values for all database passwords (`BOOKSTACK_DB_*` and `AFFINE_DB_PASSWORD`).
 
 **Important**: `CONTINUWUITY_SERVER_NAME` becomes part of every user and room ID. It cannot be changed later without wiping the database. Keep it as `localhost` while testing.
 
@@ -41,82 +46,78 @@ Watch logs until healthy:
 docker compose logs -f
 ```
 
-First startup of AFFiNE can take 1–2 minutes while Postgres initializes and migrations run.
+First startup of the databases can take a minute.
 
 ### 4. Create your accounts
 
-**Matrix / Element**
+**Element (chat)**  
+http://localhost:8080  
+Create an account on the homeserver `localhost` using the registration token from `.env`.
 
-1. Open http://localhost:8080
-2. Create an account on the homeserver `localhost`
-3. Use the registration token from your `.env` when prompted
+**BookStack (wiki)**  
+http://localhost:6875  
+Default login (change immediately):  
+- Email: `admin@admin.com`  
+- Password: `password`
 
-**AFFiNE**
+**AFFiNE (infinite canvas)**  
+http://localhost:3010  
+The first request starts AFFiNE (can take 10–20 seconds). After 15 minutes with no traffic it automatically stops and frees RAM. The next visit wakes it again.
 
-1. Open http://localhost:3010
-2. Create the first user (this becomes the admin)
+### 5. Recommended structure
 
-### 5. Recommended structure (Discord-like)
+| Need                          | Where to put it                          |
+|-------------------------------|------------------------------------------|
+| Server / categories / channels| Element Spaces + rooms                   |
+| Focused discussion on a topic | Thread in a room                         |
+| Long-form structured writing  | BookStack page                           |
+| Freeform board / mind map     | AFFiNE Edgeless canvas                   |
+| Link everything together      | Paste the BookStack or AFFiNE URL into the thread (or use `/addwidget`) |
 
-| Discord concept     | How to do it here                          |
-|---------------------|--------------------------------------------|
-| Server              | Matrix Space                               |
-| Category / topic    | Nested Space or room category              |
-| Channel             | Matrix room                                |
-| Post                | Thread in a room                           |
-| Rich content dump   | AFFiNE page (link or widget)               |
-| Chat for the post   | The thread itself                          |
+**Typical workflow:**
 
-**Typical workflow for a “post”:**
+1. Create a Space and rooms in Element.
+2. For a topic, start a thread.
+3. Write the structured version in BookStack.
+4. Make a freeform board in AFFiNE when you need notes, arrows, photos, and connections on a canvas.
+5. Paste the AFFiNE (or BookStack) link into the thread so people can jump to the board while chatting.
 
-1. Create a Space (your server).
-2. Create a room under it (your channel).
-3. Start a thread in that room (this is the post’s dedicated chat).
-4. Create an AFFiNE page for the rich content (text, images, embeds, links, videos).
-5. Paste the AFFiNE page URL into the thread root message.
-6. Optionally pin the AFFiNE page as a widget with `/addwidget <url>` so it appears inside the room.
+### Stopping pieces you don’t need
 
-General chat stays in the main room. Focused discussion happens in the thread.
-
-## Optional: Meilisearch
-
-```bash
-docker compose --profile search up -d
-```
-
-Meilisearch will be available at http://localhost:7700. You can later index Matrix messages and AFFiNE content into it for unified, fast search (and AI/MCP use).
-
-## Stopping and restarting
+AFFiNE is controlled by the idle watcher. It starts on first request to port 3010 and stops itself after 15 minutes of no traffic. You can also force-stop it:
 
 ```bash
-docker compose down          # stop
-docker compose up -d         # start again
-docker compose down -v       # stop and delete all data (destructive)
+docker compose stop affine affine_postgres affine_redis
 ```
+
+To change the idle timeout, set `AFFINE_IDLE_SECONDS` in `.env` (default 900).
+
+Or stop everything:
+
+```bash
+docker compose down
+```
+
+## Resource expectations
+
+| Service                  | Approx. idle RAM |
+|--------------------------|------------------|
+| Continuwuity + Element   | 100–300 MB       |
+| BookStack + MariaDB      | 250–500 MB       |
+| AFFiNE (when running)    | 700 MB–1.5 GB+   |
+| AFFiNE idle watcher      | ~20 MB           |
+| **Total with AFFiNE up** | **1.2–2.5 GB**   |
+| **Total with AFFiNE asleep** | **~400–800 MB** |
+
+AFFiNE only consumes its large footprint while someone is actively using the boards. After 15 minutes of no traffic it sleeps and the stack drops back to the light baseline.
 
 ## Production notes (later)
 
 When you move to a real domain:
 
-1. Set `CONTINUWUITY_SERVER_NAME` to your domain **before the first start** (cannot be changed later).
+1. Set `CONTINUWUITY_SERVER_NAME` to your domain **before the first start**.
 2. Put a reverse proxy (Caddy or Traefik) in front for TLS.
 3. Update Element’s `config/element-config.json` `base_url` and `server_name`.
-4. Update AFFiNE’s `config/affine-config.json` `externalUrl` to the public HTTPS URL.
-5. Enable federation if desired (`CONTINUWUITY_ALLOW_FEDERATION=true`).
-6. Open ports 443 and 8448 (or handle them via the reverse proxy).
+4. Update BookStack’s `APP_URL` and AFFiNE’s `AFFINE_SERVER_EXTERNAL_URL` to the public HTTPS URLs and restart.
 
-## Troubleshooting (rare on first local run)
-
-- **Cannot create Matrix account**: Double-check the registration token in `.env` matches what you type.
-- **Element cannot reach homeserver**: Confirm Continuwuity is healthy (`docker compose ps`) and that `config/element-config.json` points to `http://localhost:6167`.
-- **AFFiNE won’t start**: Check logs with `docker compose logs affine affine_migration postgres`. First run needs the migration job to finish.
-- **Widget / iframe blank**: AFFiNE self-hosted is usually embeddable. If the browser blocks it, open the AFFiNE page in a new tab as a fallback.
-
-## Next steps after it works
-
-- Create your first Space + rooms.
-- Make a couple of real posts using threads + AFFiNE pages.
-- Enable the Meilisearch profile when you want better search.
-- Add AI later via AFFiNE’s built-in MCP + BYOK or by pointing agents at Meilisearch.
-
-Enjoy your self-hosted collaboration hub.
+Enjoy the hybrid hub.

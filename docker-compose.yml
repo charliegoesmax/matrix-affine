@@ -1,5 +1,5 @@
-# Super Collab — Continuwuity + Element + AFFiNE
-# Local-first Docker Compose stack for Discord-like chat + rich posts/canvas
+# Super Collab — Continuwuity + Element + BookStack + AFFiNE
+# Chat + structured wiki + infinite canvas
 
 name: super-collab
 
@@ -20,13 +20,13 @@ services:
       CONTINUWUITY_PORT: 6167
       CONTINUWUITY_ALLOW_REGISTRATION: "true"
       CONTINUWUITY_REGISTRATION_TOKEN: ${CONTINUWUITY_REGISTRATION_TOKEN}
-      CONTINUWUITY_ALLOW_FEDERATION: "false"          # Disable for local testing
+      CONTINUWUITY_ALLOW_FEDERATION: "false"
       CONTINUWUITY_ALLOW_CHECK_FOR_UPDATES: "false"
-      CONTINUWUITY_MAX_REQUEST_SIZE: "50000000"       # ~50 MB uploads
+      CONTINUWUITY_MAX_REQUEST_SIZE: "50000000"
       CONTINUWUITY_TRUSTED_SERVERS: '["matrix.org"]'
     volumes:
       - continuwuity_data:/var/lib/continuwuity
-      - ./config/resolv.conf:/etc/resolv.conf:ro     # Avoid Docker DNS issues
+      - ./config/resolv.conf:/etc/resolv.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:6167/_matrix/client/versions || exit 1"]
       interval: 15s
@@ -35,7 +35,7 @@ services:
       start_period: 20s
 
   # ---------------------------------------------------------------------------
-  # Element Web (Matrix client)
+  # Element Web
   # ---------------------------------------------------------------------------
   element:
     image: vectorim/element-web:latest
@@ -50,103 +50,127 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # AFFiNE (rich canvas / wiki / posts)
-  # Official structure adapted for this stack
+  # BookStack + MariaDB
   # ---------------------------------------------------------------------------
-  affine:
-    image: ghcr.io/toeverything/affine:stable
-    container_name: affine
+  bookstack:
+    image: lscr.io/linuxserver/bookstack:latest
+    container_name: bookstack
+    restart: unless-stopped
+    ports:
+      - "${BOOKSTACK_PORT:-6875}:80"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Etc/UTC}
+      - APP_URL=http://localhost:${BOOKSTACK_PORT:-6875}
+      - APP_KEY=${BOOKSTACK_APP_KEY}
+      - DB_HOST=bookstack_db
+      - DB_PORT=3306
+      - DB_USER=bookstack
+      - DB_PASS=${BOOKSTACK_DB_PASSWORD}
+      - DB_DATABASE=bookstack
+    volumes:
+      - ./data/bookstack/config:/config
+    depends_on:
+      bookstack_db:
+        condition: service_healthy
+
+  bookstack_db:
+    image: mariadb:11
+    container_name: bookstack_db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${BOOKSTACK_DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=bookstack
+      - MYSQL_USER=bookstack
+      - MYSQL_PASSWORD=${BOOKSTACK_DB_PASSWORD}
+    volumes:
+      - ./data/bookstack/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # AFFiNE idle watcher — starts AFFiNE on first request, stops after 15 min idle
+  # Point your browser / Element widget at this port instead of AFFiNE directly.
+  # ---------------------------------------------------------------------------
+  affine_idle:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.affine-idle
+    container_name: affine_idle
     restart: unless-stopped
     ports:
       - "${AFFINE_PORT:-3010}:3010"
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      affine_migration:
-        condition: service_completed_successfully
-    volumes:
-      - ./data/affine/storage:/root/.affine/storage
-      - ./config:/root/.affine/config
     environment:
-      - REDIS_SERVER_HOST=redis
-      - DATABASE_URL=postgresql://affine:${POSTGRES_PASSWORD}@postgres:5432/affine
-      - AFFINE_INDEXER_ENABLED=false
-      - DEPLOYMENT_TYPE=selfhosted
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3010 || exit 1"]
-      interval: 20s
-      timeout: 10s
-      retries: 10
-      start_period: 40s
-
-  affine_migration:
-    image: ghcr.io/toeverything/affine:stable
-    container_name: affine_migration
+      - IDLE_SECONDS=${AFFINE_IDLE_SECONDS:-900}
+      - COMPOSE_PROJECT_DIR=/workspace
+      - COMPOSE_FILE=docker-compose.yml
     volumes:
-      - ./data/affine/storage:/root/.affine/storage
-      - ./config:/root/.affine/config
-    command: ["sh", "-c", "node ./scripts/self-host-predeploy.js"]
-    environment:
-      - REDIS_SERVER_HOST=redis
-      - DATABASE_URL=postgresql://affine:${POSTGRES_PASSWORD}@postgres:5432/affine
-      - AFFINE_INDEXER_ENABLED=false
-      - DEPLOYMENT_TYPE=selfhosted
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace:ro
     depends_on:
-      postgres:
+      - continuwuity
+      - element
+      - bookstack
+
+  # ---------------------------------------------------------------------------
+  # AFFiNE (infinite canvas) — managed by the idle watcher above
+  # Do NOT publish its port; the watcher proxies to it.
+  # ---------------------------------------------------------------------------
+  affine:
+    image: ghcr.io/toeverything/affine-graphql:stable
+    container_name: affine
+    restart: "no"          # idle watcher controls lifecycle
+    # no ports: — traffic comes through affine_idle
+    environment:
+      - NODE_OPTIONS="--import=./scripts/register.js"
+      - AFFINE_SERVER_EXTERNAL_URL=http://localhost:${AFFINE_PORT:-3010}
+      - DATABASE_URL=postgres://${AFFINE_DB_USER:-affine}:${AFFINE_DB_PASSWORD}@affine_postgres:5432/${AFFINE_DB_NAME:-affine}
+      - REDIS_SERVER_HOST=affine_redis
+      - AFFINE_INDEXER_ENABLED=false
+    volumes:
+      - ./data/affine:/root/.affine
+    depends_on:
+      affine_postgres:
         condition: service_healthy
-      redis:
+      affine_redis:
         condition: service_healthy
 
-  redis:
-    image: redis:7-alpine
-    container_name: affine_redis
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  postgres:
-    image: pgvector/pgvector:pg16
+  affine_postgres:
+    image: postgres:16-alpine
     container_name: affine_postgres
-    restart: unless-stopped
-    volumes:
-      - ./data/affine/postgres:/var/lib/postgresql/data
+    restart: "no"
     environment:
-      POSTGRES_USER: affine
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: affine
-      POSTGRES_INITDB_ARGS: "--data-checksums"
+      POSTGRES_USER: ${AFFINE_DB_USER:-affine}
+      POSTGRES_PASSWORD: ${AFFINE_DB_PASSWORD}
+      POSTGRES_DB: ${AFFINE_DB_NAME:-affine}
+    volumes:
+      - ./data/affine_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U affine -d affine"]
+      test: ["CMD-SHELL", "pg_isready -U ${AFFINE_DB_USER:-affine}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 20s
 
-  # ---------------------------------------------------------------------------
-  # Optional: Meilisearch (excellent unified search — enable when ready)
-  # ---------------------------------------------------------------------------
-  meilisearch:
-    image: getmeili/meilisearch:v1.11
-    container_name: meilisearch
-    profiles: ["search"]
-    restart: unless-stopped
-    ports:
-      - "${MEILI_PORT:-7700}:7700"
-    environment:
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
-      MEILI_ENV: development
-      MEILI_NO_ANALYTICS: "true"
+  affine_redis:
+    image: redis:7-alpine
+    container_name: affine_redis
+    restart: "no"
     volumes:
-      - meilisearch_data:/meili_data
+      - ./data/affine_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
 volumes:
   continuwuity_data:
-  meilisearch_data:
 
 networks:
   default:

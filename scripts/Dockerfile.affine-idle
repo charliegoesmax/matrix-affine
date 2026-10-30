@@ -1,0 +1,15 @@
+# Tiny sidecar that starts AFFiNE on demand and stops it after idle time
+FROM alpine:3.20
+
+RUN apk add --no-cache docker-cli docker-cli-compose socat wget
+
+COPY affine-idle-watcher.sh /usr/local/bin/affine-idle-watcher.sh
+RUN chmod +x /usr/local/bin/affine-idle-watcher.sh
+
+ENV IDLE_SECONDS=900
+ENV CHECK_INTERVAL=30
+ENV PROXY_PORT=3010
+
+EXPOSE 3010
+
+CMD ["/usr/local/bin/affine-idle-watcher.sh"]

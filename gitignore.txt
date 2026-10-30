@@ -1,0 +1,10 @@
+# Data directories (persistent)
+data/
+
+# Environment (contains secrets)
+.env
+
+# OS / editor junk
+.DS_Store
+*.log
+Thumbs.db

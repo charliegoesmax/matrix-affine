@@ -1,0 +1,153 @@
+# Super Collab — Continuwuity + Element + AFFiNE
+# Local-first Docker Compose stack for Discord-like chat + rich posts/canvas
+
+name: super-collab
+
+services:
+  # ---------------------------------------------------------------------------
+  # Continuwuity (lightweight Rust Matrix homeserver)
+  # ---------------------------------------------------------------------------
+  continuwuity:
+    image: forgejo.ellis.link/continuwuation/continuwuity:latest
+    container_name: continuwuity
+    restart: unless-stopped
+    ports:
+      - "${CONTINUWUITY_PORT:-6167}:6167"
+    environment:
+      CONTINUWUITY_SERVER_NAME: ${CONTINUWUITY_SERVER_NAME:-localhost}
+      CONTINUWUITY_DATABASE_PATH: /var/lib/continuwuity
+      CONTINUWUITY_ADDRESS: 0.0.0.0
+      CONTINUWUITY_PORT: 6167
+      CONTINUWUITY_ALLOW_REGISTRATION: "true"
+      CONTINUWUITY_REGISTRATION_TOKEN: ${CONTINUWUITY_REGISTRATION_TOKEN}
+      CONTINUWUITY_ALLOW_FEDERATION: "false"          # Disable for local testing
+      CONTINUWUITY_ALLOW_CHECK_FOR_UPDATES: "false"
+      CONTINUWUITY_MAX_REQUEST_SIZE: "50000000"       # ~50 MB uploads
+      CONTINUWUITY_TRUSTED_SERVERS: '["matrix.org"]'
+    volumes:
+      - continuwuity_data:/var/lib/continuwuity
+      - ./config/resolv.conf:/etc/resolv.conf:ro     # Avoid Docker DNS issues
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:6167/_matrix/client/versions || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Element Web (Matrix client)
+  # ---------------------------------------------------------------------------
+  element:
+    image: vectorim/element-web:latest
+    container_name: element
+    restart: unless-stopped
+    ports:
+      - "${ELEMENT_PORT:-8080}:80"
+    volumes:
+      - ./config/element-config.json:/app/config.json:ro
+    depends_on:
+      continuwuity:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # AFFiNE (rich canvas / wiki / posts)
+  # Official structure adapted for this stack
+  # ---------------------------------------------------------------------------
+  affine:
+    image: ghcr.io/toeverything/affine:stable
+    container_name: affine
+    restart: unless-stopped
+    ports:
+      - "${AFFINE_PORT:-3010}:3010"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      affine_migration:
+        condition: service_completed_successfully
+    volumes:
+      - ./data/affine/storage:/root/.affine/storage
+      - ./config:/root/.affine/config
+    environment:
+      - REDIS_SERVER_HOST=redis
+      - DATABASE_URL=postgresql://affine:${POSTGRES_PASSWORD}@postgres:5432/affine
+      - AFFINE_INDEXER_ENABLED=false
+      - DEPLOYMENT_TYPE=selfhosted
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3010 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  affine_migration:
+    image: ghcr.io/toeverything/affine:stable
+    container_name: affine_migration
+    volumes:
+      - ./data/affine/storage:/root/.affine/storage
+      - ./config:/root/.affine/config
+    command: ["sh", "-c", "node ./scripts/self-host-predeploy.js"]
+    environment:
+      - REDIS_SERVER_HOST=redis
+      - DATABASE_URL=postgresql://affine:${POSTGRES_PASSWORD}@postgres:5432/affine
+      - AFFINE_INDEXER_ENABLED=false
+      - DEPLOYMENT_TYPE=selfhosted
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: affine_redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: affine_postgres
+    restart: unless-stopped
+    volumes:
+      - ./data/affine/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: affine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: affine
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U affine -d affine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Optional: Meilisearch (excellent unified search — enable when ready)
+  # ---------------------------------------------------------------------------
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: meilisearch
+    profiles: ["search"]
+    restart: unless-stopped
+    ports:
+      - "${MEILI_PORT:-7700}:7700"
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilisearch_data:/meili_data
+
+volumes:
+  continuwuity_data:
+  meilisearch_data:
+
+networks:
+  default:
+    name: super-collab

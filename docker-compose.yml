@@ -8,7 +8,7 @@ services:
   # Continuwuity (lightweight Rust Matrix homeserver)
   # ---------------------------------------------------------------------------
   continuwuity:
-    image: forgejo.ellis.link/continuwuation/continuwuity:latest
+    image: ghcr.io/continuwuity/continuwuity:latest
     container_name: continuwuity
     restart: unless-stopped
     ports:
@@ -26,13 +26,13 @@ services:
       CONTINUWUITY_TRUSTED_SERVERS: '["matrix.org"]'
     volumes:
       - continuwuity_data:/var/lib/continuwuity
-      - ./config/resolv.conf:/etc/resolv.conf:ro
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:6167/_matrix/client/versions || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      #- ./config/resolv.conf:/etc/resolv.conf:ro
+    #healthcheck:
+      #test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:6167/_matrix/client/versions || exit 1"]
+      #interval: 15s
+      #timeout: 5s
+      #retries: 10
+      #start_period: 20s
 
   # ---------------------------------------------------------------------------
   # Element Web
@@ -44,10 +44,10 @@ services:
     ports:
       - "${ELEMENT_PORT:-8080}:80"
     volumes:
-      - ./config/element-config.json:/app/config.json:ro
+      - ./config/element-config.json:/app/config.json:ro,z
     depends_on:
       continuwuity:
-        condition: service_healthy
+        condition: service_started
 
   # ---------------------------------------------------------------------------
   # BookStack + MariaDB
@@ -62,15 +62,15 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TZ:-Etc/UTC}
-      - APP_URL=http://localhost:${BOOKSTACK_PORT:-6875}
+      - APP_URL=http://localhost:6875
       - APP_KEY=${BOOKSTACK_APP_KEY}
       - DB_HOST=bookstack_db
       - DB_PORT=3306
-      - DB_USER=bookstack
+      - DB_USER=${BOOKSTACK_DB_USERNAME}
       - DB_PASS=${BOOKSTACK_DB_PASSWORD}
       - DB_DATABASE=bookstack
     volumes:
-      - ./data/bookstack/config:/config
+      - ./data/bookstack/config:/config:z
     depends_on:
       bookstack_db:
         condition: service_healthy
@@ -82,10 +82,10 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=${BOOKSTACK_DB_ROOT_PASSWORD}
       - MYSQL_DATABASE=bookstack
-      - MYSQL_USER=bookstack
+      - MYSQL_USER=${BOOKSTACK_DB_USERNAME}
       - MYSQL_PASSWORD=${BOOKSTACK_DB_PASSWORD}
     volumes:
-      - ./data/bookstack/db:/var/lib/mysql
+      - bookstack_db_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -122,7 +122,7 @@ services:
   # Do NOT publish its port; the watcher proxies to it.
   # ---------------------------------------------------------------------------
   affine:
-    image: ghcr.io/toeverything/affine-graphql:stable
+    image: ghcr.io/toeverything/affine:stable
     container_name: affine
     restart: "no"          # idle watcher controls lifecycle
     # no ports: — traffic comes through affine_idle
@@ -171,6 +171,7 @@ services:
 
 volumes:
   continuwuity_data:
+  bookstack_db_data:
 
 networks:
   default:

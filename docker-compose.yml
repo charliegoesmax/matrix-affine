@@ -64,10 +64,11 @@ services:
       - TZ=${TZ:-Etc/UTC}
       - APP_URL=http://localhost:6875
       - APP_KEY=${BOOKSTACK_APP_KEY}
+      - APP_THEME=custom
       - DB_HOST=bookstack_db
       - DB_PORT=3306
-      - DB_USER=${BOOKSTACK_DB_USERNAME}
-      - DB_PASS=${BOOKSTACK_DB_PASSWORD}
+      - DB_USERNAME=${BOOKSTACK_DB_USERNAME}
+      - DB_PASSWORD=${BOOKSTACK_DB_PASSWORD}
       - DB_DATABASE=bookstack
     volumes:
       - ./data/bookstack/config:/config:z

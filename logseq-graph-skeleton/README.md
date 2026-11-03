@@ -1,4 +1,4 @@
-# Super Collab starter graph
+# LogSeq starter graph
 
 This is a minimal Logseq graph skeleton for the matrix-affine stack.
 

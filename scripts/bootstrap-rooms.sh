@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # bootstrap-rooms.sh
 # One-shot script that creates a Super Collab Space + tool rooms with widgets
-# after Continuwuity is up. Run once on first start (or whenever you want to re-seed).
+# after Continuwuity is up. Also installs the Element banner module into the
+# shared /modules volume.
 #
 # Usage (from host, after stack is healthy):
 #   bash scripts/bootstrap-rooms.sh
 #
-# Or add as a one-shot service in docker-compose (see comments at bottom).
-
+# Or run automatically via the bootstrap service in docker-compose.
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -18,13 +18,15 @@ SERVER_NAME="${SERVER_NAME:-localhost}"
 REG_TOKEN="${CONTINUWUITY_REGISTRATION_TOKEN:-}"
 ADMIN_USER="${ADMIN_USER:-bootstrap}"
 ADMIN_PASS="${ADMIN_PASS:-bootstrap-change-me}"
-
 BOOKSTACK_URL="${BOOKSTACK_URL:-http://localhost:6875}"
 LOGSEQ_URL="${LOGSEQ_URL:-http://localhost:3001}"
 AFFINE_URL="${AFFINE_URL:-http://localhost:3010}"
-
 SPACE_NAME="${SPACE_NAME:-Super Collab}"
 SPACE_ALIAS="${SPACE_ALIAS:-super-collab}"
+
+# Element modules (mounted from host ./config/element-modules)
+MODULES_DIR="${MODULES_DIR:-/modules}"
+BANNER_VER="${BANNER_VER:-v2.1.1}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -136,6 +138,26 @@ add_to_space() {
   log "Added child $child_id to space"
 }
 
+install_banner_module() {
+  local banner_dir="$MODULES_DIR/banner"
+
+  if [[ -f "$banner_dir/index.js" ]]; then
+    log "Banner module already present at $banner_dir, skipping download"
+    return 0
+  fi
+
+  log "Downloading Element banner module $BANNER_VER"
+  mkdir -p "$banner_dir"
+
+  curl -fsSL -o /tmp/banner.zip \
+    "https://github.com/element-hq/element-web/releases/download/module%2Fbanner%2F${BANNER_VER}/banner-${BANNER_VER}.zip"
+
+  unzip -o /tmp/banner.zip -d "$banner_dir"
+  rm -f /tmp/banner.zip
+
+  log "Banner module installed to $banner_dir"
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -159,6 +181,9 @@ log "Linking rooms into Space"
 add_to_space "$SPACE_ID" "$BOOK_ID"
 add_to_space "$SPACE_ID" "$LOGSEQ_ID"
 add_to_space "$SPACE_ID" "$AFFINE_ID"
+
+# Install Element modules into the shared volume
+install_banner_module
 
 log "Done."
 log "Space ID: $SPACE_ID"

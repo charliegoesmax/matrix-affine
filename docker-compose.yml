@@ -102,6 +102,8 @@ services:
     depends_on:
       bookstack_db:
         condition: service_healthy
+      markupcraft-setup:
+        condition: service_completed_successfully
 
   bookstack_db:
     image: mariadb:11

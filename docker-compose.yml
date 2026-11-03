@@ -339,8 +339,8 @@ services:
 
         Theme::listen(ThemeEvents::ACTIVITY_LOGGED, function ($type, $detail) {
             $script = '/scripts/sync-bookstack-to-logseq.sh';
-            if (is_executable($script)) {
-                exec($script . ' >/dev/null 2>&1 &');
+            if (is_file($script)) {
+                exec('bash ' . escapeshellarg($script) . ' >/dev/null 2>&1 &');
             }
         });
         EOF

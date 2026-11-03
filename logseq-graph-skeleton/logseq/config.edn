@@ -1,0 +1,4 @@
+{:meta/version 1}
+
+;; Super Collab starter config
+;; Plugins are managed per-device via Marketplace; this file only holds graph-level settings.

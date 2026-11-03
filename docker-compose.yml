@@ -1,5 +1,5 @@
-# Super Collab — Continuwuity + Element + BookStack + AFFiNE
-# Chat + structured wiki + infinite canvas
+# Super Collab — Continuwuity + Element + BookStack + Logseq + AFFiNE
+# Chat + structured wiki + networked notes + infinite canvas
 
 name: super-collab
 
@@ -93,6 +93,21 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Logseq (outliner + block graph)
+  # File-based graph lives on the host so the BookStack → Logseq pipeline can write Markdown into it.
+  # In the web UI you still pick / confirm the graph folder (File System Access API).
+  # ---------------------------------------------------------------------------
+  logseq:
+    image: ghcr.io/logseq/logseq-webapp:latest
+    container_name: logseq
+    restart: unless-stopped
+    ports:
+      - "${LOGSEQ_PORT:-3001}:80"
+    volumes:
+      - ./data/logseq/graph:/logseq-graph
+    # No depends_on needed — it is independent
 
   # ---------------------------------------------------------------------------
   # AFFiNE idle watcher — starts AFFiNE on first request, stops after 15 min idle

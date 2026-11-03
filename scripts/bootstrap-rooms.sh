@@ -23,6 +23,8 @@ LOGSEQ_URL="${LOGSEQ_URL:-http://localhost:3001}"
 AFFINE_URL="${AFFINE_URL:-http://localhost:3010}"
 SPACE_NAME="${SPACE_NAME:-Super Collab}"
 SPACE_ALIAS="${SPACE_ALIAS:-super-collab}"
+NEOBOARD_URL="${NEOBOARD_URL:-http://localhost:8081}"
+ZOMELLO_URL="${ZOMELLO_URL:-http://localhost:7311}"
 
 # Element modules (mounted from host ./config/element-modules)
 MODULES_DIR="${MODULES_DIR:-/modules}"
@@ -170,16 +172,22 @@ SPACE_ID=$(create_room "$SPACE_NAME" "$SPACE_ALIAS" "Super Collab hub — chat, 
 log "Creating tool rooms"
 BOOK_ID=$(create_room "BookStack Wiki" "bookstack" "Structured documentation")
 LOGSEQ_ID=$(create_room "Logseq Graph" "logseq" "Networked notes and block graph")
+ZOMELLO_ID=$(create_room "Zomello Kanban" "zomello" "Kanban boards and tasks")
 AFFINE_ID=$(create_room "AFFiNE Canvas" "affine" "Infinite canvas boards")
+NEOBOARD_ID=$(create_room "NeoBoard Whiteboard" "neoboard" "Collaborative whiteboard")
 
 log "Adding widgets"
 add_widget "$BOOK_ID"   "bookstack" "BookStack" "$BOOKSTACK_URL"
 add_widget "$LOGSEQ_ID" "logseq"    "Logseq"    "$LOGSEQ_URL"
+add_widget "$NEOBOARD_ID" "neoboard" "NeoBoard" "$NEOBOARD_URL"
+add_widget "$ZOMELLO_ID"  "zomello"  "Zomello"  "$ZOMELLO_URL"
 add_widget "$AFFINE_ID" "affine"    "AFFiNE"    "$AFFINE_URL"
 
 log "Linking rooms into Space"
 add_to_space "$SPACE_ID" "$BOOK_ID"
 add_to_space "$SPACE_ID" "$LOGSEQ_ID"
+add_to_space "$SPACE_ID" "$NEOBOARD_ID"
+add_to_space "$SPACE_ID" "$ZOMELLO_ID"
 add_to_space "$SPACE_ID" "$AFFINE_ID"
 
 # Install Element modules into the shared volume

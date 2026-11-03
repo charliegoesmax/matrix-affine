@@ -97,6 +97,8 @@ services:
       - DB_DATABASE=bookstack
     volumes:
       - ./data/bookstack/config:/config:z
+      - ./scripts:/scripts:ro          # so functions.php can exec the script
+      - ./data/logseq/graph:/logseq-graph   # optional: direct write target
     depends_on:
       bookstack_db:
         condition: service_healthy
@@ -221,6 +223,115 @@ services:
       - "${MARKUPCRAFT_PORT:-8000}:80"
     volumes:
       - ./data/markupcraft:/usr/share/nginx/html:ro
+    depends_on:
+      markupcraft-setup:
+        condition: service_completed_successfully
+
+  # ---------------------------------------------------------------------------
+  # One-shot: download MarkupCraft browser edition + install BookStack theme module
+  # ---------------------------------------------------------------------------
+  markupcraft-setup:
+    image: alpine:latest
+    container_name: markupcraft-setup
+    restart: "no"
+    volumes:
+      - ./data/markupcraft:/markupcraft
+      - ./data/bookstack/config/www/themes:/themes
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache curl unzip
+
+        # --- MarkupCraft static files ---
+        mkdir -p /markupcraft
+        if [ ! -f /markupcraft/index.html ]; then
+          echo "Downloading latest MarkupCraft browser edition..."
+          # Pin to a known good release; update URL as needed
+          curl -fsSL -o /tmp/mc.zip \
+            https://github.com/getcadcraft/markupcraft/releases/download/markupcraft-v0.8.1/markupcraft-browser-edition-v0.8.1.zip \
+            || curl -fsSL -o /tmp/mc.zip \
+            https://github.com/getcadcraft/markupcraft/releases/latest/download/markupcraft-browser-edition-v0.8.1.zip
+          unzip -q /tmp/mc.zip -d /tmp/mc
+          # Handle both flat and nested zip layouts
+          if [ -f /tmp/mc/index.html ]; then
+            cp -a /tmp/mc/. /markupcraft/
+          else
+            cp -a /tmp/mc/*/ /markupcraft/ 2>/dev/null || true
+          fi
+          rm -rf /tmp/mc /tmp/mc.zip
+          echo "MarkupCraft placed in /markupcraft"
+        else
+          echo "MarkupCraft already present, skipping download"
+        fi
+
+        # --- BookStack theme module ---
+        MODULE=/themes/custom/modules/markupcraft
+        mkdir -p "$MODULE/head"
+        cat > "$MODULE/bookstack-module.json" << 'EOF'
+        {
+          "name": "markupcraft",
+          "description": "Open PDFs in MarkupCraft and show version lists"
+        }
+        EOF
+        cat > "$MODULE/head/markupcraft.html" << 'EOF'
+        <script>
+        (function() {
+          const MARKUPCRAFT_BASE = window.location.origin.replace(/:\d+$/, '') + ':8000';
+          function isPdfLink(a) {
+            const h = (a.href || '').toLowerCase();
+            return h.includes('.pdf') || h.includes('/attachment/');
+          }
+          function addOpenButton(link) {
+            if (link.dataset.mcAdded) return;
+            link.dataset.mcAdded = '1';
+            const btn = document.createElement('button');
+            btn.textContent = 'Open in MarkupCraft';
+            btn.style.cssText = 'margin-left:6px;padding:1px 6px;font-size:0.8em;cursor:pointer;';
+            btn.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              navigator.clipboard?.writeText(link.href);
+              window.open(MARKUPCRAFT_BASE, '_blank');
+            };
+            link.after(btn);
+          }
+          function groupVersions() {
+            const links = document.querySelectorAll('a.attachment-file, .attachment a, a[href*=".pdf"]');
+            const groups = {};
+            links.forEach(a => {
+              const name = (a.textContent || '').trim() || a.href.split('/').pop();
+              const base = name.split('[')[0].split('(')[0].replace(/\.pdf$/i, '').trim();
+              if (!base) return;
+              (groups[base] = groups[base] || []).push({ name, href: a.href, el: a });
+            });
+            Object.entries(groups).forEach(([base, items]) => {
+              if (items.length < 2) return;
+              const box = document.createElement('div');
+              box.style.cssText = 'margin:6px 0;padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.85em;';
+              box.innerHTML = `<strong>${base} versions:</strong> `;
+              items.forEach(v => {
+                const a = document.createElement('a');
+                a.href = v.href;
+                a.textContent = v.name;
+                a.target = '_blank';
+                a.style.marginRight = '8px';
+                box.appendChild(a);
+              });
+              items[0].el.parentNode.insertBefore(box, items[0].el);
+            });
+          }
+          function init() {
+            document.querySelectorAll('a').forEach(a => { if (isPdfLink(a)) addOpenButton(a); });
+            groupVersions();
+          }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+          else init();
+          setTimeout(init, 1200);
+        })();
+        </script>
+        EOF
+        echo "Theme module installed at $MODULE"
 
 volumes:
   continuwuity_data:

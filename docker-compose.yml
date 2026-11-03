@@ -36,25 +36,26 @@ services:
 
 # ---------------------------------------------------------------------------
 # Optional: run automatically on docker compose up
-   bootstrap:
-     image: curlimages/curl:latest
-     container_name: bootstrap
-     restart: "no"
-     depends_on:
-       continuwuity:
-         condition: service_started
-     volumes:
-       - ./scripts/bootstrap-rooms.sh:/bootstrap.sh:ro
-     environment:
-       - HS_URL=http://continuwuity:6167
-       - CONTINUWUITY_REGISTRATION_TOKEN=${CONTINUWUITY_REGISTRATION_TOKEN}
-       - SERVER_NAME=${CONTINUWUITY_SERVER_NAME:-localhost}
-       - BOOKSTACK_URL=http://bookstack:80
-       - LOGSEQ_URL=http://logseq:80
-       - AFFINE_URL=http://affine_idle:3010
-     entrypoint: ["/bin/sh", "-c", "apk add --no-cache jq && /bootstrap.sh"]
-# (The curl image is Alpine; jq is added on the fly. Or use a small custom image.)
 # ---------------------------------------------------------------------------
+  bootstrap:
+    image: curlimages/curl:latest
+    container_name: bootstrap
+    restart: "no"
+    depends_on:
+      continuwuity:
+        condition: service_started
+    volumes:
+      - ./scripts/bootstrap-rooms.sh:/bootstrap.sh:ro
+      - ./config/element-modules:/modules
+    environment:
+      - HS_URL=http://continuwuity:6167
+      - CONTINUWUITY_REGISTRATION_TOKEN=${CONTINUWUITY_REGISTRATION_TOKEN}
+      - SERVER_NAME=${CONTINUWUITY_SERVER_NAME:-localhost}
+      - BOOKSTACK_URL=http://bookstack:80
+      - LOGSEQ_URL=http://logseq:80
+      - AFFINE_URL=http://affine_idle:3010
+      - MODULES_DIR=/modules
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache jq unzip && /bootstrap.sh"]
 
   # ---------------------------------------------------------------------------
   # Element Web

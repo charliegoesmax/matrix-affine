@@ -66,7 +66,8 @@ services:
     ports:
       - "${ELEMENT_PORT:-8080}:80"
     volumes:
-      - ./config/element-config.json:/app/config.json:ro,z
+    #  - ./config/element-config.json.orig:/app/config.json:ro,z   # quick rollback
+       - ./config/element-config.json:/app/config.json:ro,z      # normal
     depends_on:
       continuwuity:
         condition: service_started

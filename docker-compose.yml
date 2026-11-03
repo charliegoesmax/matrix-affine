@@ -210,6 +210,18 @@ services:
       timeout: 5s
       retries: 10
 
+  # ---------------------------------------------------------------------------
+  # MarkupCraft (static browser edition)
+  # ---------------------------------------------------------------------------
+  markupcraft:
+    image: nginx:alpine
+    container_name: markupcraft
+    restart: unless-stopped
+    ports:
+      - "${MARKUPCRAFT_PORT:-8000}:80"
+    volumes:
+      - ./data/markupcraft:/usr/share/nginx/html:ro
+
 volumes:
   continuwuity_data:
   bookstack_db_data:

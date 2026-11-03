@@ -242,7 +242,6 @@ services:
       - |
         set -e
         apk add --no-cache curl unzip
-
         # --- MarkupCraft static files ---
         mkdir -p /markupcraft
         if [ ! -f /markupcraft/index.html ]; then
@@ -264,7 +263,6 @@ services:
         else
           echo "MarkupCraft already present, skipping download"
         fi
-
         # --- BookStack theme module ---
         MODULE=/themes/custom/modules/markupcraft
         mkdir -p "$MODULE/head"
@@ -331,8 +329,21 @@ services:
         })();
         </script>
         EOF
-        echo "Theme module installed at $MODULE"
+        cat > "$MODULE/functions.php" << 'EOF'
+        <?php
 
+        use BookStack\Facades\Theme;
+        use BookStack\Theming\ThemeEvents;
+
+        Theme::listen(ThemeEvents::ACTIVITY_LOGGED, function ($type, $detail) {
+            $script = '/scripts/sync-bookstack-to-logseq.sh';
+            if (is_executable($script)) {
+                exec($script . ' >/dev/null 2>&1 &');
+            }
+        });
+        EOF
+        echo "Theme module installed at $MODULE (including functions.php)"
+        
 volumes:
   continuwuity_data:
   bookstack_db_data:

@@ -346,9 +346,36 @@ services:
         EOF
         echo "Theme module installed at $MODULE (including functions.php)"
         
+  # ---------------------------------------------------------------------------
+  # NeoBoard (Matrix whiteboard widget)
+  # ---------------------------------------------------------------------------
+  neoboard:
+    image: ghcr.io/nordeck/matrix-neoboard-widget:latest
+    container_name: neoboard
+    restart: unless-stopped
+    ports:
+      - "${NEOBOARD_PORT:-8081}:8080"
+    environment:
+      - REACT_APP_HOME_SERVER_URL=http://localhost:6167
+
+  # ---------------------------------------------------------------------------
+  # Zomello (kanban)
+  # ---------------------------------------------------------------------------
+  zomello:
+    image: ghcr.io/zombeatz/zomello-server:latest
+    container_name: zomello
+    restart: unless-stopped
+    ports:
+      - "${ZOMELLO_PORT:-7311}:7311"
+    volumes:
+      - zomello-data:/data
+    environment:
+      - ZOMELLO_TLS=off
+
 volumes:
   continuwuity_data:
   bookstack_db_data:
+  zomello-data:
 
 networks:
   default:

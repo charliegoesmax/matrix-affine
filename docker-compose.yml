@@ -68,6 +68,7 @@ services:
     volumes:
     #  - ./config/element-config.json.orig:/app/config.json:ro,z   # quick rollback
        - ./config/element-config.json:/app/config.json:ro,z      # normal
+       - ./config/element-modules:/modules:ro
     depends_on:
       continuwuity:
         condition: service_started
